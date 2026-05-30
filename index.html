@@ -542,10 +542,6 @@
             background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(218, 165, 32, 0.1));
         }
 
-        .crown {
-            margin-right: 0.5rem;
-        }
-
         /* GAME SCREEN */
         .game-container {
             display: flex;
@@ -840,12 +836,6 @@
             grid-column: 1 / -1;
         }
 
-        .profile-edit-section {
-            margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 2px solid rgba(218, 165, 32, 0.2);
-        }
-
         /* TOAST NOTIFICATIONS */
         .toast-container {
             position: fixed;
@@ -903,21 +893,6 @@
         .empty-state-message {
             font-size: 1.1rem;
             margin-bottom: 1.5rem;
-        }
-
-        /* LOADING */
-        .loading-spinner {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(218, 165, 32, 0.2);
-            border-top-color: var(--dark-gold);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
         }
 
         /* RESPONSIVE */
@@ -995,16 +970,6 @@
                 width: auto;
             }
         }
-
-        /* CHESSBOARD OVERRIDE */
-        .square-55d63 {
-            width: 100%;
-            height: 100%;
-        }
-
-        .cm-piece {
-            background-size: contain !important;
-        }
     </style>
 </head>
 <body>
@@ -1025,8 +990,8 @@
                 <!-- LOGIN FORM -->
                 <div class="auth-form-container" id="loginForm">
                     <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" id="loginEmail" placeholder="your@email.com">
+                        <label>Username</label>
+                        <input type="text" id="loginUsername" placeholder="your_username">
                     </div>
                     <div class="form-group">
                         <label>Password</label>
@@ -1268,6 +1233,33 @@
         const API_BASE = 'https://adolfo-blondish-sublaryngeally.ngrok-free.dev';
         const LOCAL_STORAGE_TOKEN_KEY = 'nova_token';
 
+        // ==================== API HELPER ====================
+        async function apiCall(endpoint, options = {}) {
+            const token = localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY);
+            const headers = {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+                ...(token && { Authorization: `Bearer ${token}` }),
+                ...options.headers
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}${endpoint}`, {
+                    ...options,
+                    headers
+                });
+
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ error: 'Request failed' }));
+                    throw new Error(error.error || error.message || 'Request failed');
+                }
+
+                return await response.json();
+            } catch (err) {
+                throw err;
+            }
+        }
+
         // ==================== STATE ====================
         let state = {
             token: localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY),
@@ -1314,24 +1306,21 @@
         }
 
         async function handleLogin() {
-            const email = document.getElementById('loginEmail').value;
+            const username = document.getElementById('loginUsername').value;
             const password = document.getElementById('loginPassword').value;
 
-            if (!email || !password) {
+            if (!username || !password) {
                 showToast('Please fill in all fields', 'error');
                 return;
             }
 
             try {
-                const response = await fetch(`${API_BASE}/auth/login`, {
+                const data = await apiCall('/api/login', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ username, password })
                 });
 
-                const data = await response.json();
-
-                if (response.ok && data.token) {
+                if (data.token) {
                     localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, data.token);
                     state.token = data.token;
                     state.user = data.user;
@@ -1340,7 +1329,7 @@
                     showToast(data.message || 'Login failed', 'error');
                 }
             } catch (err) {
-                showToast('Connection error: ' + err.message, 'error');
+                showToast('Login error: ' + err.message, 'error');
             }
         }
 
@@ -1355,15 +1344,12 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE}/auth/register`, {
+                const data = await apiCall('/api/register', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
                     body: JSON.stringify({ username, email, password })
                 });
 
-                const data = await response.json();
-
-                if (response.ok && data.token) {
+                if (data.token) {
                     localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, data.token);
                     state.token = data.token;
                     state.user = data.user;
@@ -1372,7 +1358,7 @@
                     showToast(data.message || 'Registration failed', 'error');
                 }
             } catch (err) {
-                showToast('Connection error: ' + err.message, 'error');
+                showToast('Registration error: ' + err.message, 'error');
             }
         }
 
@@ -1382,26 +1368,23 @@
                 showToast('Please enter your email', 'error');
                 return;
             }
-            showToast('Password reset link sent to ' + email, 'success');
+            
+            try {
+                await apiCall('/api/forgot-password', {
+                    method: 'POST',
+                    body: JSON.stringify({ email })
+                });
+                showToast('Password reset link sent to ' + email, 'success');
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
         }
 
         async function verifyTokenAndLoadApp() {
             try {
-                const response = await fetch(`${API_BASE}/auth/verify`, {
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    state.user = data.user;
-                    loadApp();
-                } else {
-                    localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
-                    state.token = null;
-                }
+                const data = await apiCall('/api/me');
+                state.user = data.user || data;
+                loadApp();
             } catch (err) {
                 localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
                 state.token = null;
@@ -1468,14 +1451,7 @@
 
         async function loadActiveGames() {
             try {
-                const response = await fetch(`${API_BASE}/games/active`, {
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                const games = await response.json();
+                const games = await apiCall('/api/games/active');
                 const list = document.getElementById('activeGamesList');
                 
                 if (!Array.isArray(games) || games.length === 0) {
@@ -1536,23 +1512,16 @@
             }
 
             try {
-                const response = await fetch(`${API_BASE}/games/create`, {
+                const game = await apiCall('/api/games', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true'
-                    },
                     body: JSON.stringify({
-                        gameType: state.gameType,
+                        opponent: state.gameType === 'ai' ? 'ai' : opponentId,
                         timeControl,
-                        variant: state.variant,
-                        opponentId
+                        variant: state.variant
                     })
                 });
 
-                const game = await response.json();
-                if (response.ok && game.id) {
+                if (game.id) {
                     state.currentGame = game;
                     joinGameById(game.id);
                 } else {
@@ -1565,14 +1534,7 @@
 
         async function loadLeaderboard() {
             try {
-                const response = await fetch(`${API_BASE}/leaderboard`, {
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                const users = await response.json();
+                const users = await apiCall('/api/leaderboard');
                 const tbody = document.getElementById('leaderboardBody');
 
                 tbody.innerHTML = (Array.isArray(users) ? users : []).map((user, idx) => {
@@ -1596,14 +1558,8 @@
             document.getElementById('profileRating').textContent = state.user?.elo || 1200;
             
             try {
-                const response = await fetch(`${API_BASE}/user/stats`, {
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-                const stats = await response.json();
-                document.getElementById('profileGamesCount').textContent = stats.gamesPlayed || 0;
+                const data = await apiCall('/api/me');
+                document.getElementById('profileGamesCount').textContent = data.gamesPlayed || 0;
             } catch (err) {
                 console.error('Failed to load profile:', err);
             }
@@ -1611,17 +1567,12 @@
 
         async function loadAvailableGames() {
             try {
-                const response = await fetch(`${API_BASE}/games/public`, {
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                const games = await response.json();
+                const games = await apiCall('/api/games/active');
                 const list = document.getElementById('availableGamesList');
                 
-                if (!Array.isArray(games) || games.length === 0) {
+                const publicGames = Array.isArray(games) ? games.filter(g => g.status === 'waiting') : [];
+                
+                if (publicGames.length === 0) {
                     list.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">🎮</div>
@@ -1631,7 +1582,7 @@
                     return;
                 }
 
-                list.innerHTML = games.map(game => `
+                list.innerHTML = publicGames.map(game => `
                     <div class="game-item" onclick="joinGameById('${game.id}')">
                         <div class="game-item-header">
                             <div class="game-item-title">${game.white?.username || 'Open'}</div>
@@ -1655,30 +1606,19 @@
 
         async function joinGameById(gameId) {
             try {
-                const response = await fetch(`${API_BASE}/games/${gameId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${state.token}`,
-                        'ngrok-skip-browser-warning': 'true'
-                    }
-                });
-
-                if (response.ok) {
-                    const game = await response.json();
-                    state.currentGame = game;
-                    navigateTo('game');
-                    initChessBoard(game);
-                    joinGameSocket(gameId);
-                }
+                const game = await apiCall(`/api/games/${gameId}`);
+                state.currentGame = game;
+                navigateTo('game');
+                initChessBoard(game);
+                joinGameSocket(gameId);
             } catch (err) {
                 showToast('Failed to join game: ' + err.message, 'error');
             }
         }
 
         function initChessBoard(game) {
-            // Initialize Chess.js
             state.chess = new Chess();
 
-            // Initialize chessboard.js
             const cfg = {
                 draggable: true,
                 position: 'start',
@@ -1690,7 +1630,6 @@
 
             state.board = Chessboard('chessboard', cfg);
 
-            // Setup controls
             document.getElementById('premoveToggle').addEventListener('click', (e) => {
                 state.premove = !state.premove;
                 document.getElementById('premoveToggle').classList.toggle('active');
@@ -1698,12 +1637,12 @@
 
             document.getElementById('resignBtn').addEventListener('click', () => {
                 if (confirm('Resign from this game?')) {
-                    state.socket?.emit('resign', { gameId: state.currentGame.id });
+                    resignGame();
                 }
             });
 
             document.getElementById('rematchBtn').addEventListener('click', () => {
-                state.socket?.emit('rematch', { gameId: state.currentGame.id });
+                requestRematch();
             });
 
             document.getElementById('chatSendBtn').addEventListener('click', sendChatMessage);
@@ -1724,21 +1663,52 @@
             const move = state.chess.move({ from: source, to: target, promotion: 'q' });
             if (move === null) return 'snapback';
 
-            state.socket?.emit('move', {
-                gameId: state.currentGame.id,
-                move: move.san
-            });
-
+            makeMove(source, target);
             state.board.position(state.chess.fen());
             updateMovesList();
+            return;
         }
 
         function onSnapEnd() {
             state.board.position(state.chess.fen());
         }
 
+        async function makeMove(from, to) {
+            try {
+                await apiCall(`/api/games/${state.currentGame.id}/move`, {
+                    method: 'POST',
+                    body: JSON.stringify({ from, to, promotion: 'q' })
+                });
+            } catch (err) {
+                showToast('Move failed: ' + err.message, 'error');
+                state.board.position(state.chess.fen());
+            }
+        }
+
+        async function resignGame() {
+            try {
+                await apiCall(`/api/games/${state.currentGame.id}/resign`, {
+                    method: 'POST'
+                });
+                showToast('You resigned from the game', 'success');
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
+        async function requestRematch() {
+            try {
+                await apiCall(`/api/games/${state.currentGame.id}/rematch`, {
+                    method: 'POST'
+                });
+                showToast('Rematch requested', 'success');
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
         function updateMovesList() {
-            const moves = state.chess.moves({ verbose: true });
+            const moves = state.chess.moves({ verbose: false });
             const movesList = document.getElementById('movesList');
             
             if (moves.length === 0) {
@@ -1746,8 +1716,8 @@
                 return;
             }
 
-            movesList.innerHTML = state.chess.moves({ verbose: false }).map((move, idx) => `
-                <div class="move-item ${idx === state.chess.moves({ verbose: false }).length - 1 ? 'last' : ''}">${move}</div>
+            movesList.innerHTML = moves.map((move, idx) => `
+                <div class="move-item ${idx === moves.length - 1 ? 'last' : ''}">${move}</div>
             `).join('');
         }
 
@@ -1775,25 +1745,27 @@
             }
         }
 
-        function sendChatMessage() {
+        async function sendChatMessage() {
             const input = document.getElementById('chatInput');
             const message = input.value.trim();
             if (!message) return;
 
-            state.socket?.emit('chat', {
-                gameId: state.currentGame.id,
-                message
-            });
-
-            input.value = '';
+            try {
+                await apiCall(`/api/games/${state.currentGame.id}/chat`, {
+                    method: 'POST',
+                    body: JSON.stringify({ message })
+                });
+                input.value = '';
+            } catch (err) {
+                showToast('Failed to send message: ' + err.message, 'error');
+            }
         }
 
         // ==================== SOCKET.IO ====================
         function connectSocket() {
             state.socket = io(API_BASE, {
-                auth: { token: state.token },
-                transports: ['polling'],
-                extraHeaders: { 'ngrok-skip-browser-warning': 'true' }
+                auth: { token: localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY) },
+                transports: ['polling']
             });
 
             state.socket.on('connect', () => {
@@ -1802,7 +1774,7 @@
 
             state.socket.on('move', (data) => {
                 if (state.chess && state.board) {
-                    const move = state.chess.move(data.move);
+                    const move = state.chess.move(data.move, { sloppy: true });
                     if (move) {
                         state.board.position(state.chess.fen());
                         updateMovesList();
@@ -1822,10 +1794,16 @@
                 state.currentGame = data.game;
                 if (state.board) state.board.position('start');
             });
+
+            state.socket.on('error', (err) => {
+                console.error('Socket error:', err);
+            });
         }
 
         function joinGameSocket(gameId) {
-            state.socket?.emit('watch game', { gameId });
+            if (state.socket) {
+                state.socket.emit('watch game', { gameId });
+            }
         }
 
         function addChatMessage(username, message) {
