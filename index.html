@@ -1,0 +1,1857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess</title>
+    
+    <!-- CDN: Chessboard.js -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboardjs/1.0.0/chessboard.min.js"></script>
+    
+    <!-- CDN: Chess.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    
+    <!-- CDN: Socket.IO -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --cream: #FFF8E7;
+            --dark-gold: #DAA520;
+            --light-gold: #FFD700;
+            --dark-brown: #3E2723;
+            --light-brown: #5D4037;
+            --papaya: #FFEFD5;
+            --gold-shadow: rgba(218, 165, 32, 0.15);
+            --gold-shadow-sm: rgba(218, 165, 32, 0.08);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+            background-color: var(--cream);
+            color: var(--dark-brown);
+            line-height: 1.6;
+            letter-spacing: 0.3px;
+        }
+
+        /* LAYOUT */
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+            background: linear-gradient(135deg, var(--cream) 0%, #FFFAEF 100%);
+        }
+
+        .app-container.auth-mode {
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 250px;
+            background: white;
+            padding: 2rem 1.5rem;
+            box-shadow: 0 4px 20px var(--gold-shadow);
+            border-right: 3px solid var(--light-gold);
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--dark-gold), var(--light-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 0.5px;
+            text-align: center;
+        }
+
+        .sidebar-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .nav-item {
+            padding: 0.875rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: transparent;
+            border: none;
+            font-size: 1rem;
+            color: var(--dark-brown);
+            text-align: left;
+            font-weight: 500;
+            width: 100%;
+        }
+
+        .nav-item:hover {
+            background: var(--papaya);
+            transform: translateX(4px);
+        }
+
+        .nav-item.active {
+            background: linear-gradient(135deg, rgba(218, 165, 32, 0.2), rgba(255, 215, 0, 0.2));
+            color: var(--dark-gold);
+            border-left: 3px solid var(--light-gold);
+            padding-left: calc(1rem - 3px);
+        }
+
+        .sidebar-spacer {
+            flex: 1;
+        }
+
+        .logout-btn {
+            padding: 0.875rem 1rem;
+            background: linear-gradient(135deg, #FFB6C1, #FFC0CB);
+            color: var(--dark-brown);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+        }
+
+        .logout-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(255, 192, 203, 0.3);
+        }
+
+        /* MAIN CONTENT */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .page {
+            display: none;
+            width: 100%;
+            max-width: 1200px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .page.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* RIGHT SIDEBAR (during games) */
+        .right-sidebar {
+            width: 300px;
+            background: white;
+            padding: 1.5rem;
+            box-shadow: 0 4px 20px var(--gold-shadow);
+            border-left: 3px solid var(--light-gold);
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            overflow: hidden;
+        }
+
+        .right-sidebar.hidden {
+            display: none;
+        }
+
+        /* CARDS */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px var(--gold-shadow);
+            border: 1px solid rgba(218, 165, 32, 0.1);
+        }
+
+        .card-sm {
+            padding: 1.5rem;
+        }
+
+        /* AUTH PAGE */
+        .auth-card {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .auth-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .auth-logo {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--dark-gold), var(--light-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            letter-spacing: 0.5px;
+        }
+
+        .auth-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid rgba(218, 165, 32, 0.2);
+        }
+
+        .auth-tab {
+            flex: 1;
+            padding: 1rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: var(--light-brown);
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .auth-tab.active {
+            color: var(--dark-gold);
+        }
+
+        .auth-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--dark-gold), var(--light-gold));
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--dark-brown);
+            font-size: 0.95rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 0.875rem;
+            border: 2px solid rgba(218, 165, 32, 0.2);
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            background: var(--cream);
+            color: var(--dark-brown);
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--dark-gold);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(218, 165, 32, 0.1);
+        }
+
+        /* BUTTONS */
+        .btn {
+            padding: 0.875rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--dark-gold), var(--light-gold));
+            color: var(--dark-brown);
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px var(--gold-shadow);
+        }
+
+        .btn-secondary {
+            background: var(--papaya);
+            color: var(--dark-brown);
+            border: 2px solid var(--dark-gold);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(218, 165, 32, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .btn-sm {
+            padding: 0.625rem 1rem;
+            font-size: 0.875rem;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #FF6B6B, #FF8787);
+            color: white;
+        }
+
+        .btn-danger:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+
+        /* DASHBOARD */
+        .welcome-section {
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, rgba(218, 165, 32, 0.1), rgba(255, 215, 0, 0.1));
+            border-radius: 12px;
+            border-left: 4px solid var(--light-gold);
+        }
+
+        .welcome-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--dark-brown);
+        }
+
+        .elo-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--dark-gold), var(--light-gold));
+            color: white;
+            padding: 0.5rem 1.25rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 15px var(--gold-shadow);
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .quick-action-btn {
+            padding: 1.5rem;
+            text-align: center;
+            border-radius: 12px;
+            background: white;
+            border: 2px solid rgba(218, 165, 32, 0.2);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+
+        .quick-action-btn:hover {
+            border-color: var(--light-gold);
+            box-shadow: 0 4px 20px var(--gold-shadow);
+            transform: translateY(-4px);
+        }
+
+        .games-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .game-item {
+            padding: 1.5rem;
+            background: var(--cream);
+            border-radius: 10px;
+            border-left: 4px solid var(--dark-gold);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .game-item:hover {
+            background: white;
+            box-shadow: 0 4px 15px var(--gold-shadow);
+            transform: translateX(4px);
+        }
+
+        .game-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .game-item-title {
+            font-weight: 600;
+            color: var(--dark-brown);
+        }
+
+        .game-item-status {
+            font-size: 0.85rem;
+            padding: 0.25rem 0.75rem;
+            background: rgba(218, 165, 32, 0.15);
+            border-radius: 12px;
+            color: var(--dark-gold);
+            font-weight: 600;
+        }
+
+        .game-item-meta {
+            font-size: 0.9rem;
+            color: var(--light-brown);
+        }
+
+        /* CREATE GAME */
+        .create-game-form {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .form-section {
+            margin-bottom: 2rem;
+        }
+
+        .form-section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--dark-brown);
+        }
+
+        .toggle-group {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .toggle-option {
+            flex: 1;
+            padding: 1rem;
+            border: 2px solid rgba(218, 165, 32, 0.2);
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            background: white;
+        }
+
+        .toggle-option.active {
+            background: linear-gradient(135deg, rgba(218, 165, 32, 0.2), rgba(255, 215, 0, 0.2));
+            border-color: var(--light-gold);
+            color: var(--dark-gold);
+        }
+
+        .form-group select {
+            width: 100%;
+            padding: 0.875rem;
+            border: 2px solid rgba(218, 165, 32, 0.2);
+            border-radius: 8px;
+            font-size: 1rem;
+            background: white;
+            color: var(--dark-brown);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--dark-gold);
+            box-shadow: 0 0 0 3px rgba(218, 165, 32, 0.1);
+        }
+
+        /* LEADERBOARD */
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .leaderboard-table thead th {
+            padding: 1rem;
+            background: linear-gradient(135deg, rgba(218, 165, 32, 0.1), rgba(255, 215, 0, 0.1));
+            border-bottom: 2px solid var(--light-gold);
+            text-align: left;
+            font-weight: 700;
+            color: var(--dark-brown);
+            font-size: 0.95rem;
+        }
+
+        .leaderboard-table tbody tr {
+            border-bottom: 1px solid rgba(218, 165, 32, 0.1);
+            transition: all 0.2s ease;
+        }
+
+        .leaderboard-table tbody tr:hover {
+            background: var(--papaya);
+        }
+
+        .leaderboard-table td {
+            padding: 1rem;
+            color: var(--dark-brown);
+        }
+
+        .rank-badge {
+            font-weight: 700;
+            color: var(--dark-gold);
+            font-size: 1.1rem;
+            min-width: 30px;
+        }
+
+        .rank-1 .rank-badge {
+            color: var(--light-gold);
+        }
+
+        .rank-1 {
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(218, 165, 32, 0.1));
+        }
+
+        .crown {
+            margin-right: 0.5rem;
+        }
+
+        /* GAME SCREEN */
+        .game-container {
+            display: flex;
+            gap: 1.5rem;
+            height: calc(100vh - 4rem);
+            width: 100%;
+        }
+
+        .game-board-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        #chessboard {
+            flex: 1;
+            max-width: 600px;
+            max-height: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px var(--gold-shadow);
+            overflow: hidden;
+        }
+
+        .game-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .timer {
+            padding: 1rem;
+            background: white;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 15px var(--gold-shadow-sm);
+            border: 2px solid rgba(218, 165, 32, 0.1);
+        }
+
+        .timer-label {
+            font-size: 0.85rem;
+            color: var(--light-brown);
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .timer-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--dark-brown);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .timer-value.danger {
+            color: #FF6B6B;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .captured-pieces {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            padding: 1rem;
+            background: white;
+            border-radius: 10px;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px var(--gold-shadow-sm);
+            min-height: 50px;
+        }
+
+        /* MOVES LIST */
+        .moves-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .moves-title {
+            font-weight: 700;
+            color: var(--dark-brown);
+            font-size: 0.95rem;
+        }
+
+        .moves-list {
+            flex: 1;
+            overflow-y: auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.25rem;
+            padding: 0.5rem;
+            background: var(--cream);
+            border-radius: 8px;
+        }
+
+        .move-item {
+            padding: 0.5rem;
+            background: white;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(218, 165, 32, 0.1);
+            text-align: center;
+        }
+
+        .move-item:hover {
+            background: var(--papaya);
+            border-color: var(--dark-gold);
+        }
+
+        .move-item.last {
+            background: linear-gradient(135deg, rgba(218, 165, 32, 0.2), rgba(255, 215, 0, 0.2));
+            border-color: var(--light-gold);
+        }
+
+        /* CHAT */
+        .chat-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .chat-title {
+            font-weight: 700;
+            color: var(--dark-brown);
+            font-size: 0.95rem;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 1rem 0.5rem;
+            background: var(--cream);
+            border-radius: 8px;
+        }
+
+        .chat-message {
+            padding: 0.75rem;
+            background: white;
+            border-radius: 8px;
+            border-left: 3px solid var(--dark-gold);
+            font-size: 0.9rem;
+            box-shadow: 0 2px 8px var(--gold-shadow-sm);
+        }
+
+        .chat-message-user {
+            font-weight: 700;
+            color: var(--dark-gold);
+            font-size: 0.8rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .chat-message-text {
+            color: var(--dark-brown);
+            word-wrap: break-word;
+        }
+
+        .chat-input-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid rgba(218, 165, 32, 0.2);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            background: white;
+            color: var(--dark-brown);
+            transition: all 0.2s ease;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--dark-gold);
+            box-shadow: 0 0 0 3px rgba(218, 165, 32, 0.1);
+        }
+
+        .chat-send-btn {
+            padding: 0.75rem 1rem;
+            background: linear-gradient(135deg, var(--dark-gold), var(--light-gold));
+            color: var(--dark-brown);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .chat-send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px var(--gold-shadow);
+        }
+
+        /* GAME CONTROLS */
+        .game-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .game-controls .btn {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .premove-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: white;
+            border-radius: 8px;
+            border: 2px solid rgba(218, 165, 32, 0.2);
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+
+        .premove-toggle.active {
+            border-color: var(--light-gold);
+            background: rgba(218, 165, 32, 0.1);
+        }
+
+        .checkbox {
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--dark-gold);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .premove-toggle.active .checkbox {
+            background: var(--dark-gold);
+            color: white;
+        }
+
+        /* PROFILE */
+        .profile-grid {
+            max-width: 600px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .profile-item {
+            padding: 1.5rem;
+            background: var(--cream);
+            border-radius: 10px;
+            border-left: 4px solid var(--dark-gold);
+        }
+
+        .profile-item-label {
+            font-size: 0.85rem;
+            color: var(--light-brown);
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .profile-item-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--dark-brown);
+        }
+
+        .profile-item.full {
+            grid-column: 1 / -1;
+        }
+
+        .profile-edit-section {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 2px solid rgba(218, 165, 32, 0.2);
+        }
+
+        /* TOAST NOTIFICATIONS */
+        .toast-container {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .toast {
+            padding: 1rem 1.5rem;
+            background: linear-gradient(135deg, var(--dark-gold), var(--light-gold));
+            color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px var(--gold-shadow);
+            animation: slideIn 0.3s ease;
+            font-weight: 600;
+            font-size: 0.95rem;
+            max-width: 350px;
+        }
+
+        .toast.error {
+            background: linear-gradient(135deg, #FF6B6B, #FF8787);
+        }
+
+        .toast.success {
+            background: linear-gradient(135deg, #51CF66, #69DB7C);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* EMPTY STATE */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--light-brown);
+        }
+
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .empty-state-message {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* LOADING */
+        .loading-spinner {
+            display: inline-block;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(218, 165, 32, 0.2);
+            border-top-color: var(--dark-gold);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                padding: 1rem;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                border-right: none;
+                border-bottom: 3px solid var(--light-gold);
+            }
+
+            .sidebar-nav {
+                flex-direction: row;
+                gap: 0;
+                flex: 1;
+                margin: 0 1rem;
+            }
+
+            .nav-item {
+                padding: 0.75rem 0.5rem;
+                font-size: 0.9rem;
+            }
+
+            .sidebar-spacer {
+                display: none;
+            }
+
+            .app-container {
+                flex-direction: column;
+            }
+
+            .game-container {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .right-sidebar {
+                width: 100%;
+                height: 400px;
+                max-height: 400px;
+            }
+
+            .content-area {
+                padding: 1rem;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .quick-actions {
+                grid-template-columns: 1fr;
+            }
+
+            .profile-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .game-info {
+                grid-template-columns: 1fr;
+            }
+
+            .moves-section,
+            .chat-section {
+                height: auto;
+                max-height: 200px;
+            }
+
+            .toast-container {
+                left: 1rem;
+                right: 1rem;
+                width: auto;
+            }
+        }
+
+        /* CHESSBOARD OVERRIDE */
+        .square-55d63 {
+            width: 100%;
+            height: 100%;
+        }
+
+        .cm-piece {
+            background-size: contain !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container auth-mode" id="appContainer">
+        <!-- LOGIN/REGISTER PAGE -->
+        <div class="page active" id="authPage">
+            <div class="card auth-card">
+                <div class="auth-header">
+                    <div class="auth-logo">♟ Chess</div>
+                </div>
+
+                <div class="auth-tabs">
+                    <button class="auth-tab active" data-tab="login">Login</button>
+                    <button class="auth-tab" data-tab="register">Register</button>
+                    <button class="auth-tab" data-tab="forgot">Forgot Password</button>
+                </div>
+
+                <!-- LOGIN FORM -->
+                <div class="auth-form-container" id="loginForm">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="loginEmail" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" id="loginBtn">Login</button>
+                </div>
+
+                <!-- REGISTER FORM -->
+                <div class="auth-form-container" id="registerForm" style="display: none;">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="registerUsername" placeholder="your_username">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="registerEmail" placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="registerPassword" placeholder="••••••••">
+                    </div>
+                    <button class="btn btn-primary" id="registerBtn">Create Account</button>
+                </div>
+
+                <!-- FORGOT PASSWORD FORM -->
+                <div class="auth-form-container" id="forgotForm" style="display: none;">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="forgotEmail" placeholder="your@email.com">
+                    </div>
+                    <button class="btn btn-primary" id="forgotBtn">Reset Password</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- APP LAYOUT (hidden until logged in) -->
+    <div class="app-layout" id="appLayout" style="display: none;">
+        <!-- SIDEBAR -->
+        <div class="sidebar">
+            <div class="sidebar-logo">♟ Chess</div>
+            <div class="sidebar-nav">
+                <button class="nav-item active" data-page="dashboard">🏠 Home</button>
+                <button class="nav-item" data-page="create">⚔️ Create Game</button>
+                <button class="nav-item" data-page="join">🎮 Join Game</button>
+                <button class="nav-item" data-page="leaderboard">📊 Leaderboard</button>
+                <button class="nav-item" data-page="profile">👤 Profile</button>
+            </div>
+            <div class="sidebar-spacer"></div>
+            <button class="logout-btn" id="logoutBtn">🚪 Logout</button>
+        </div>
+
+        <!-- MAIN CONTENT -->
+        <div class="main-content">
+            <div class="content-area">
+                <!-- DASHBOARD -->
+                <div class="page active" id="dashboardPage">
+                    <div class="welcome-section">
+                        <div class="welcome-text">Welcome back, <span id="dashboardUsername">User</span>! 👋</div>
+                        <div class="elo-badge" id="dashboardElo">Rating: 1200</div>
+                    </div>
+
+                    <div class="quick-actions">
+                        <button class="quick-action-btn" id="playAiBtn">Play vs AI 🤖</button>
+                        <button class="quick-action-btn" id="challengeBtn">Challenge Player ⚔️</button>
+                    </div>
+
+                    <div class="card">
+                        <h3 style="margin-bottom: 1rem; color: var(--dark-brown);">Active Games</h3>
+                        <div id="activeGamesList" class="games-list">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🎮</div>
+                                <div class="empty-state-message">No active games yet. Start one!</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CREATE GAME -->
+                <div class="page" id="createPage">
+                    <div class="card create-game-form">
+                        <h2 style="margin-bottom: 2rem; color: var(--dark-brown);">New Game</h2>
+
+                        <div class="form-section">
+                            <div class="form-section-title">Game Type</div>
+                            <div class="toggle-group">
+                                <div class="toggle-option active" data-game-type="ai">vs AI 🤖</div>
+                                <div class="toggle-option" data-game-type="player">vs Player ⚔️</div>
+                            </div>
+                        </div>
+
+                        <div class="form-group" id="opponentGroup" style="display: none;">
+                            <label>Opponent User ID</label>
+                            <input type="text" id="opponentUserId" placeholder="Enter opponent's ID">
+                        </div>
+
+                        <div class="form-section">
+                            <div class="form-section-title">Time Control</div>
+                            <div class="form-group">
+                                <select id="timeControl">
+                                    <option value="3+0">Blitz: 3 min + 0 sec</option>
+                                    <option value="5+3">Rapid: 5 min + 3 sec</option>
+                                    <option value="10+0">Rapid: 10 min + 0 sec</option>
+                                    <option value="15+10">Classical: 15 min + 10 sec</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <div class="form-section-title">Variant</div>
+                            <div class="toggle-group">
+                                <div class="toggle-option active" data-variant="standard">Standard ♟</div>
+                                <div class="toggle-option" data-variant="chess960">Chess960 🎲</div>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-primary" id="startGameBtn" style="margin-top: 1.5rem;">Start Game 🎮</button>
+                    </div>
+                </div>
+
+                <!-- JOIN GAME -->
+                <div class="page" id="joinPage">
+                    <div class="card" style="max-width: 600px; margin: 0 auto;">
+                        <h2 style="margin-bottom: 2rem; color: var(--dark-brown);">Join Game</h2>
+
+                        <div class="form-group">
+                            <label>Game ID</label>
+                            <input type="text" id="gameIdInput" placeholder="Paste game ID">
+                        </div>
+
+                        <button class="btn btn-primary" id="spectateBtn" style="margin-bottom: 2rem;">Spectate 👀</button>
+
+                        <h3 style="margin-bottom: 1rem; color: var(--dark-brown);">Available Games</h3>
+                        <div id="availableGamesList" class="games-list">
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🎮</div>
+                                <div class="empty-state-message">No public games available.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LEADERBOARD -->
+                <div class="page" id="leaderboardPage">
+                    <div class="card" style="max-width: 900px; margin: 0 auto;">
+                        <h2 style="margin-bottom: 2rem; color: var(--dark-brown);">Leaderboard</h2>
+                        <table class="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Username</th>
+                                    <th>Rating</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PROFILE -->
+                <div class="page" id="profilePage">
+                    <div class="profile-grid">
+                        <div class="profile-item">
+                            <div class="profile-item-label">Username</div>
+                            <div class="profile-item-value" id="profileUsername">—</div>
+                        </div>
+                        <div class="profile-item">
+                            <div class="profile-item-label">Rating</div>
+                            <div class="profile-item-value" id="profileRating">1200</div>
+                        </div>
+                        <div class="profile-item">
+                            <div class="profile-item-label">Games</div>
+                            <div class="profile-item-value" id="profileGamesCount">0</div>
+                        </div>
+                        <div class="profile-item">
+                            <div class="profile-item-label">Email</div>
+                            <div class="profile-item-value" id="profileEmail">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GAME SCREEN -->
+                <div class="page" id="gamePage">
+                    <div class="game-container">
+                        <div class="game-board-section">
+                            <div id="chessboard"></div>
+                            <div class="captured-pieces">
+                                <div id="capturedPieces"></div>
+                            </div>
+                            <div class="game-info">
+                                <div class="timer">
+                                    <div class="timer-label">White</div>
+                                    <div class="timer-value" id="whiteTimer">5:00</div>
+                                </div>
+                                <div class="timer">
+                                    <div class="timer-label">Black</div>
+                                    <div class="timer-value" id="blackTimer">5:00</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="right-sidebar">
+                            <div class="moves-section">
+                                <div class="moves-title">Moves</div>
+                                <div class="moves-list" id="movesList"></div>
+                            </div>
+
+                            <div class="chat-section">
+                                <div class="chat-title">Chat</div>
+                                <div class="chat-messages" id="chatMessages"></div>
+                                <div class="chat-input-group">
+                                    <input type="text" class="chat-input" id="chatInput" placeholder="Say something...">
+                                    <button class="chat-send-btn" id="chatSendBtn">Send</button>
+                                </div>
+                            </div>
+
+                            <div class="game-controls">
+                                <label class="premove-toggle" id="premoveToggle">
+                                    <div class="checkbox">✓</div>
+                                    Premove
+                                </label>
+                                <button class="btn btn-secondary btn-sm" id="resignBtn">Resign</button>
+                                <button class="btn btn-secondary btn-sm" id="rematchBtn">Rematch</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST CONTAINER -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ==================== CONFIG ====================
+        const API_BASE = 'https://adolfo-blondish-sublaryngeally.ngrok-free.dev';
+        const LOCAL_STORAGE_TOKEN_KEY = 'nova_token';
+
+        // ==================== STATE ====================
+        let state = {
+            token: localStorage.getItem(LOCAL_STORAGE_TOKEN_KEY),
+            user: null,
+            currentGame: null,
+            currentPage: 'dashboard',
+            gameType: 'ai',
+            variant: 'standard',
+            premove: false,
+            socket: null,
+            chess: null,
+            board: null
+        };
+
+        // ==================== INIT ====================
+        window.addEventListener('DOMContentLoaded', () => {
+            setupAuthTabs();
+            setupAuthHandlers();
+            setupNavigation();
+            setupGameHandlers();
+            
+            if (state.token) {
+                verifyTokenAndLoadApp();
+            }
+        });
+
+        // ==================== AUTH ====================
+        function setupAuthTabs() {
+            document.querySelectorAll('.auth-tab').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    const tabName = e.target.dataset.tab;
+                    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.auth-form-container').forEach(f => f.style.display = 'none');
+                    e.target.classList.add('active');
+                    document.getElementById(`${tabName}Form`).style.display = 'block';
+                });
+            });
+        }
+
+        function setupAuthHandlers() {
+            document.getElementById('loginBtn').addEventListener('click', handleLogin);
+            document.getElementById('registerBtn').addEventListener('click', handleRegister);
+            document.getElementById('forgotBtn').addEventListener('click', handleForgot);
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+
+            if (!email || !password) {
+                showToast('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, data.token);
+                    state.token = data.token;
+                    state.user = data.user;
+                    loadApp();
+                } else {
+                    showToast(data.message || 'Login failed', 'error');
+                }
+            } catch (err) {
+                showToast('Connection error: ' + err.message, 'error');
+            }
+        }
+
+        async function handleRegister() {
+            const username = document.getElementById('registerUsername').value;
+            const email = document.getElementById('registerEmail').value;
+            const password = document.getElementById('registerPassword').value;
+
+            if (!username || !email || !password) {
+                showToast('Please fill in all fields', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                    body: JSON.stringify({ username, email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    localStorage.setItem(LOCAL_STORAGE_TOKEN_KEY, data.token);
+                    state.token = data.token;
+                    state.user = data.user;
+                    loadApp();
+                } else {
+                    showToast(data.message || 'Registration failed', 'error');
+                }
+            } catch (err) {
+                showToast('Connection error: ' + err.message, 'error');
+            }
+        }
+
+        async function handleForgot() {
+            const email = document.getElementById('forgotEmail').value;
+            if (!email) {
+                showToast('Please enter your email', 'error');
+                return;
+            }
+            showToast('Password reset link sent to ' + email, 'success');
+        }
+
+        async function verifyTokenAndLoadApp() {
+            try {
+                const response = await fetch(`${API_BASE}/auth/verify`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    state.user = data.user;
+                    loadApp();
+                } else {
+                    localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+                    state.token = null;
+                }
+            } catch (err) {
+                localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+                state.token = null;
+            }
+        }
+
+        function loadApp() {
+            document.getElementById('appContainer').style.display = 'flex';
+            document.getElementById('appLayout').style.display = 'flex';
+            document.getElementById('authPage').style.display = 'none';
+            document.getElementById('appContainer').classList.remove('auth-mode');
+            loadDashboard();
+            connectSocket();
+        }
+
+        // ==================== NAVIGATION ====================
+        function setupNavigation() {
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    const page = e.target.dataset.page;
+                    navigateTo(page);
+                });
+            });
+
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                localStorage.removeItem(LOCAL_STORAGE_TOKEN_KEY);
+                state.token = null;
+                location.reload();
+            });
+
+            document.getElementById('playAiBtn').addEventListener('click', () => {
+                state.gameType = 'ai';
+                navigateTo('create');
+            });
+
+            document.getElementById('challengeBtn').addEventListener('click', () => {
+                state.gameType = 'player';
+                navigateTo('create');
+            });
+        }
+
+        function navigateTo(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById(page + 'Page').classList.add('active');
+
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
+
+            state.currentPage = page;
+
+            if (page === 'dashboard') loadDashboard();
+            if (page === 'create') setupCreateGame();
+            if (page === 'leaderboard') loadLeaderboard();
+            if (page === 'profile') loadProfile();
+            if (page === 'join') loadAvailableGames();
+        }
+
+        // ==================== PAGES ====================
+        function loadDashboard() {
+            document.getElementById('dashboardUsername').textContent = state.user?.username || 'User';
+            document.getElementById('dashboardElo').textContent = `Rating: ${state.user?.elo || 1200}`;
+            loadActiveGames();
+        }
+
+        async function loadActiveGames() {
+            try {
+                const response = await fetch(`${API_BASE}/games/active`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                const games = await response.json();
+                const list = document.getElementById('activeGamesList');
+                
+                if (!Array.isArray(games) || games.length === 0) {
+                    list.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🎮</div>
+                            <div class="empty-state-message">No active games yet. Start one!</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                list.innerHTML = games.map(game => `
+                    <div class="game-item" onclick="joinGameById('${game.id}')">
+                        <div class="game-item-header">
+                            <div class="game-item-title">${game.white?.username || 'White'} vs ${game.black?.username || 'Black'}</div>
+                            <div class="game-item-status">${game.status}</div>
+                        </div>
+                        <div class="game-item-meta">${game.variant} • ${game.timeControl}</div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load games:', err);
+            }
+        }
+
+        function setupCreateGame() {
+            const gameTypeToggles = document.querySelectorAll('[data-game-type]');
+            const variantToggles = document.querySelectorAll('[data-variant]');
+
+            gameTypeToggles.forEach(toggle => {
+                toggle.addEventListener('click', (e) => {
+                    gameTypeToggles.forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active');
+                    state.gameType = e.target.dataset.gameType;
+                    document.getElementById('opponentGroup').style.display = state.gameType === 'player' ? 'block' : 'none';
+                });
+            });
+
+            variantToggles.forEach(toggle => {
+                toggle.addEventListener('click', (e) => {
+                    variantToggles.forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active');
+                    state.variant = e.target.dataset.variant;
+                });
+            });
+
+            document.getElementById('startGameBtn').addEventListener('click', startGame);
+        }
+
+        async function startGame() {
+            const timeControl = document.getElementById('timeControl').value;
+            const opponentId = state.gameType === 'player' ? document.getElementById('opponentUserId').value : null;
+
+            if (state.gameType === 'player' && !opponentId) {
+                showToast('Enter opponent User ID', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/games/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'Content-Type': 'application/json',
+                        'ngrok-skip-browser-warning': 'true'
+                    },
+                    body: JSON.stringify({
+                        gameType: state.gameType,
+                        timeControl,
+                        variant: state.variant,
+                        opponentId
+                    })
+                });
+
+                const game = await response.json();
+                if (response.ok && game.id) {
+                    state.currentGame = game;
+                    joinGameById(game.id);
+                } else {
+                    showToast(game.message || 'Failed to create game', 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            }
+        }
+
+        async function loadLeaderboard() {
+            try {
+                const response = await fetch(`${API_BASE}/leaderboard`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                const users = await response.json();
+                const tbody = document.getElementById('leaderboardBody');
+
+                tbody.innerHTML = (Array.isArray(users) ? users : []).map((user, idx) => {
+                    const isFirst = idx === 0;
+                    return `
+                        <tr class="${isFirst ? 'rank-1' : ''}">
+                            <td class="rank-badge">${isFirst ? '👑' : idx + 1}</td>
+                            <td>${user.username}</td>
+                            <td><strong>${user.elo}</strong></td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error('Failed to load leaderboard:', err);
+            }
+        }
+
+        async function loadProfile() {
+            document.getElementById('profileUsername').textContent = state.user?.username || '—';
+            document.getElementById('profileEmail').textContent = state.user?.email || '—';
+            document.getElementById('profileRating').textContent = state.user?.elo || 1200;
+            
+            try {
+                const response = await fetch(`${API_BASE}/user/stats`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+                const stats = await response.json();
+                document.getElementById('profileGamesCount').textContent = stats.gamesPlayed || 0;
+            } catch (err) {
+                console.error('Failed to load profile:', err);
+            }
+        }
+
+        async function loadAvailableGames() {
+            try {
+                const response = await fetch(`${API_BASE}/games/public`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                const games = await response.json();
+                const list = document.getElementById('availableGamesList');
+                
+                if (!Array.isArray(games) || games.length === 0) {
+                    list.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🎮</div>
+                            <div class="empty-state-message">No public games available.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                list.innerHTML = games.map(game => `
+                    <div class="game-item" onclick="joinGameById('${game.id}')">
+                        <div class="game-item-header">
+                            <div class="game-item-title">${game.white?.username || 'Open'}</div>
+                            <div class="game-item-status">Waiting</div>
+                        </div>
+                        <div class="game-item-meta">${game.variant} • ${game.timeControl}</div>
+                    </div>
+                `).join('');
+            } catch (err) {
+                console.error('Failed to load available games:', err);
+            }
+        }
+
+        // ==================== GAME ====================
+        function setupGameHandlers() {
+            document.getElementById('spectateBtn').addEventListener('click', () => {
+                const gameId = document.getElementById('gameIdInput').value;
+                if (gameId) joinGameById(gameId);
+            });
+        }
+
+        async function joinGameById(gameId) {
+            try {
+                const response = await fetch(`${API_BASE}/games/${gameId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${state.token}`,
+                        'ngrok-skip-browser-warning': 'true'
+                    }
+                });
+
+                if (response.ok) {
+                    const game = await response.json();
+                    state.currentGame = game;
+                    navigateTo('game');
+                    initChessBoard(game);
+                    joinGameSocket(gameId);
+                }
+            } catch (err) {
+                showToast('Failed to join game: ' + err.message, 'error');
+            }
+        }
+
+        function initChessBoard(game) {
+            // Initialize Chess.js
+            state.chess = new Chess();
+
+            // Initialize chessboard.js
+            const cfg = {
+                draggable: true,
+                position: 'start',
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd,
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+            };
+
+            state.board = Chessboard('chessboard', cfg);
+
+            // Setup controls
+            document.getElementById('premoveToggle').addEventListener('click', (e) => {
+                state.premove = !state.premove;
+                document.getElementById('premoveToggle').classList.toggle('active');
+            });
+
+            document.getElementById('resignBtn').addEventListener('click', () => {
+                if (confirm('Resign from this game?')) {
+                    state.socket?.emit('resign', { gameId: state.currentGame.id });
+                }
+            });
+
+            document.getElementById('rematchBtn').addEventListener('click', () => {
+                state.socket?.emit('rematch', { gameId: state.currentGame.id });
+            });
+
+            document.getElementById('chatSendBtn').addEventListener('click', sendChatMessage);
+            document.getElementById('chatInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendChatMessage();
+            });
+
+            updateTimers();
+            setInterval(updateTimers, 100);
+        }
+
+        function onDragStart(source, piece) {
+            if (state.chess.game_over()) return false;
+            return ['w', 'b'].includes(piece.color);
+        }
+
+        function onDrop(source, target) {
+            const move = state.chess.move({ from: source, to: target, promotion: 'q' });
+            if (move === null) return 'snapback';
+
+            state.socket?.emit('move', {
+                gameId: state.currentGame.id,
+                move: move.san
+            });
+
+            state.board.position(state.chess.fen());
+            updateMovesList();
+        }
+
+        function onSnapEnd() {
+            state.board.position(state.chess.fen());
+        }
+
+        function updateMovesList() {
+            const moves = state.chess.moves({ verbose: true });
+            const movesList = document.getElementById('movesList');
+            
+            if (moves.length === 0) {
+                movesList.innerHTML = '';
+                return;
+            }
+
+            movesList.innerHTML = state.chess.moves({ verbose: false }).map((move, idx) => `
+                <div class="move-item ${idx === state.chess.moves({ verbose: false }).length - 1 ? 'last' : ''}">${move}</div>
+            `).join('');
+        }
+
+        function updateTimers() {
+            if (!state.currentGame) return;
+            const white = state.currentGame.whiteTime || '5:00';
+            const black = state.currentGame.blackTime || '5:00';
+
+            const whiteEl = document.getElementById('whiteTimer');
+            const blackEl = document.getElementById('blackTimer');
+
+            whiteEl.textContent = white;
+            blackEl.textContent = black;
+
+            if (white.includes(':')) {
+                const [mins, secs] = white.split(':').map(Number);
+                if (mins === 0 && secs < 30) whiteEl.classList.add('danger');
+                else whiteEl.classList.remove('danger');
+            }
+
+            if (black.includes(':')) {
+                const [mins, secs] = black.split(':').map(Number);
+                if (mins === 0 && secs < 30) blackEl.classList.add('danger');
+                else blackEl.classList.remove('danger');
+            }
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            state.socket?.emit('chat', {
+                gameId: state.currentGame.id,
+                message
+            });
+
+            input.value = '';
+        }
+
+        // ==================== SOCKET.IO ====================
+        function connectSocket() {
+            state.socket = io(API_BASE, {
+                auth: { token: state.token },
+                transports: ['polling'],
+                extraHeaders: { 'ngrok-skip-browser-warning': 'true' }
+            });
+
+            state.socket.on('connect', () => {
+                console.log('Socket connected');
+            });
+
+            state.socket.on('move', (data) => {
+                if (state.chess && state.board) {
+                    const move = state.chess.move(data.move);
+                    if (move) {
+                        state.board.position(state.chess.fen());
+                        updateMovesList();
+                    }
+                }
+            });
+
+            state.socket.on('gameOver', (data) => {
+                showToast(`Game over: ${data.result}`, 'success');
+            });
+
+            state.socket.on('chat', (data) => {
+                addChatMessage(data.username, data.message);
+            });
+
+            state.socket.on('gameStarted', (data) => {
+                state.currentGame = data.game;
+                if (state.board) state.board.position('start');
+            });
+        }
+
+        function joinGameSocket(gameId) {
+            state.socket?.emit('watch game', { gameId });
+        }
+
+        function addChatMessage(username, message) {
+            const container = document.getElementById('chatMessages');
+            const msgEl = document.createElement('div');
+            msgEl.className = 'chat-message';
+            msgEl.innerHTML = `
+                <div class="chat-message-user">${username}</div>
+                <div class="chat-message-text">${message}</div>
+            `;
+            container.appendChild(msgEl);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ==================== UTILITIES ====================
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.getElementById('toastContainer').appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
